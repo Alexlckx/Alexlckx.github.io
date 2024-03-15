@@ -1,200 +1,240 @@
-import pygame
-import random
+// Constants
+const SCREEN_WIDTH = 300;
+const SCREEN_HEIGHT = 530;
+const GRID_SIZE = 30;
+const GRID_WIDTH = SCREEN_WIDTH / GRID_SIZE;
+const GRID_HEIGHT = SCREEN_HEIGHT / GRID_SIZE;
+const BLOCK_SIZE = 30;
+const COLORS = {
+    'I': 'cyan',
+    'J': 'blue',
+    'L': 'orange',
+    'O': 'yellow',
+    'S': 'green',
+    'T': 'purple',
+    'Z': 'red'
+};
+const BLACK = 'black';
+const GRAY = 'gray';
 
-# Initialize Pygame
-pygame.init()
-
-# Constants
-SCREEN_WIDTH = 300
-SCREEN_HEIGHT = 530
-GRID_SIZE = 30
-GRID_WIDTH = SCREEN_WIDTH // GRID_SIZE
-GRID_HEIGHT = SCREEN_HEIGHT // GRID_SIZE
-BLACK = (0, 0, 0)
-WHITE = (255, 255, 255)
-GRAY = (128, 128, 128)
-TETROMINOES = {
+// Tetrominoes
+const TETROMINOES = {
     'I': [
-        [(1,), (1,), (1,), (1,)]
+        [[1], [1], [1], [1]]
     ],
     'J': [
-        [(1, 0), (1, 1), (1,)]
+        [[0, 1], [0, 1], [1, 1]]
     ],
     'L': [
-        [(0, 1), (0, 1), (1, 1)]
+        [[1, 0], [1, 0], [1, 1]]
     ],
     'O': [
-        [(1, 1), (1, 1)]
+        [[1, 1], [1, 1]]
     ],
     'S': [
-        [(0, 1, 1), (1, 1, 0)]
+        [[0, 1, 1], [1, 1, 0]]
     ],
     'T': [
-        [(0, 1, 0), (1, 1, 1)]
+        [[0, 1, 0], [1, 1, 1]]
     ],
     'Z': [
-        [(1, 1, 0), (0, 1, 1)]
+        [[1, 1, 0], [0, 1, 1]]
     ]
-}
-TETROMINO_COLORS = {
-    'I': (0, 255, 255),
-    'J': (0, 0, 255),
-    'L': (255, 128, 0),
-    'O': (255, 255, 0),
-    'S': (0, 255, 0),
-    'T': (128, 0, 128),
-    'Z': (255, 0, 0)
-}
+};
 
+// Create canvas and context
+const canvas = document.createElement('canvas');
+canvas.width = SCREEN_WIDTH;
+canvas.height = SCREEN_HEIGHT;
+document.body.appendChild(canvas);
+const ctx = canvas.getContext('2d');
 
-def create_block():
-    block_type = random.choice(list(TETROMINOES.keys()))
-    rotation = random.randint(0, len(TETROMINOES[block_type]) - 1)
-    x = (GRID_WIDTH - len(TETROMINOES[block_type][rotation][0])) // 2
-    y = 0
-    return {
-        'type': block_type,
-        'rotation': rotation,
-        'x': x,
-        'y': y
+// Create initial block
+let currentBlock = createBlock();
+let grid = Array.from({ length: GRID_HEIGHT }, () => Array(GRID_WIDTH).fill(0));
+
+// Game variables
+let fallTime = 0;
+let fallSpeed = 500; // in milliseconds
+let score = 0;
+let gameOver = false;
+
+// Main game loop
+function mainLoop(timestamp) {
+    if (gameOver) {
+        gameOverScreen();
+        return;
     }
 
+    // Clear canvas
+    ctx.clearRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
 
-def draw_block(screen, block):
-    block_type = block['type']
-    rotation = block['rotation']
-    x = block['x']
-    y = block['y']
-    for i, row in enumerate(TETROMINOES[block_type][rotation]):
-        for j, cell in enumerate(row):
-            if cell:
-                pygame.draw.rect(screen, TETROMINO_COLORS[block_type],
-                                 (x * GRID_SIZE + j * GRID_SIZE, y * GRID_SIZE + i * GRID_SIZE, GRID_SIZE, GRID_SIZE))
-                pygame.draw.rect(screen, BLACK,
-                                 (x * GRID_SIZE + j * GRID_SIZE, y * GRID_SIZE + i * GRID_SIZE, GRID_SIZE, GRID_SIZE), 1)
+    // Handle input
+    handleInput();
 
+    // Update
+    update(timestamp);
 
-def main():
-    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-    clock = pygame.time.Clock()
+    // Draw
+    draw();
 
-    current_block = create_block()
-    grid = [[0] * GRID_WIDTH for _ in range(GRID_HEIGHT)]
+    // Request next frame
+    requestAnimationFrame(mainLoop);
+}
 
-    fall_time = 0
-    fall_speed = 0.5  # Adjust the speed here
-    score = 0
+// Start the game loop
+requestAnimationFrame(mainLoop);
 
-    game_over = False
+// Handle keyboard input
+function handleInput() {
+    document.addEventListener('keydown', event => {
+        if (event.key === 'ArrowLeft') {
+            moveLeft();
+        } else if (event.key === 'ArrowRight') {
+            moveRight();
+        } else if (event.key === 'ArrowDown') {
+            moveDown();
+        }
+    });
+}
 
-    while not game_over:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                return
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_LEFT:
-                    current_block['x'] -= 1
-                    if is_collision(current_block, grid):
-                        current_block['x'] += 1
-                elif event.key == pygame.K_RIGHT:
-                    current_block['x'] += 1
-                    if is_collision(current_block, grid):
-                        current_block['x'] -= 1
-                elif event.key == pygame.K_DOWN:
-                    current_block['y'] += 1
-                    if is_collision(current_block, grid):
-                        current_block['y'] -= 1
-                        merge_block(current_block, grid)
-                        current_block = create_block()
-                        remove_full_rows(grid)
-                        score += 1
-                        if is_collision(current_block, grid):
-                            game_over = True
+// Update game state
+function update(timestamp) {
+    // Move block down
+    fallTime += timestamp - lastTime;
+    if (fallTime > fallSpeed) {
+        moveDown();
+        fallTime = 0;
+    }
+}
 
-        screen.fill(BLACK)
-        draw_grid(screen, grid)
-        draw_block(screen, current_block)
-        pygame.display.flip()
+// Draw everything
+function draw() {
+    // Draw grid
+    for (let i = 0; i < GRID_WIDTH; i++) {
+        for (let j = 0; j < GRID_HEIGHT; j++) {
+            ctx.fillStyle = grid[j][i] ? COLORS[grid[j][i]] : GRAY;
+            ctx.fillRect(i * BLOCK_SIZE, j * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+            ctx.strokeStyle = BLACK;
+            ctx.strokeRect(i * BLOCK_SIZE, j * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+        }
+    }
 
-        # Automatic block falling
-        fall_time += clock.get_rawtime()
-        clock.tick()
-        if fall_time / 1000 > fall_speed:
-            current_block['y'] += 1
-            if is_collision(current_block, grid):
-                current_block['y'] -= 1
-                merge_block(current_block, grid)
-                current_block = create_block()
-                remove_full_rows(grid)
-                score += 1
-                if is_collision(current_block, grid):
-                    game_over = True
-            fall_time = 0
+    // Draw current block
+    drawBlock(currentBlock);
+}
 
-        if game_over:
-            game_over_screen(screen)
-            pygame.quit()
-            return
+// Create a new block
+function createBlock() {
+    const blockTypes = Object.keys(TETROMINOES);
+    const randomType = blockTypes[Math.floor(Math.random() * blockTypes.length)];
+    const rotations = TETROMINOES[randomType];
+    const randomRotation = rotations[Math.floor(Math.random() * rotations.length)];
+    const x = Math.floor(GRID_WIDTH / 2) - Math.floor(randomRotation[0].length / 2);
+    return {
+        type: randomType,
+        rotation: randomRotation,
+        x: x,
+        y: 0
+    };
+}
 
+// Draw a block
+function drawBlock(block) {
+    const { type, rotation, x, y } = block;
+    for (let i = 0; i < rotation.length; i++) {
+        for (let j = 0; j < rotation[i].length; j++) {
+            if (rotation[i][j]) {
+                ctx.fillStyle = COLORS[type];
+                ctx.fillRect((x + j) * BLOCK_SIZE, (y + i) * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+                ctx.strokeStyle = BLACK;
+                ctx.strokeRect((x + j) * BLOCK_SIZE, (y + i) * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+            }
+        }
+    }
+}
 
-def is_collision(block, grid):
-    block_type = block['type']
-    rotation = block['rotation']
-    x = block['x']
-    y = block['y']
-    for i, row in enumerate(TETROMINOES[block_type][rotation]):
-        for j, cell in enumerate(row):
-            if cell:
-                # Check if the block is outside the grid boundaries or if there's already a block in the grid cell
-                if (x + j < 0 or x + j >= GRID_WIDTH or y + i >= GRID_HEIGHT or grid[y + i][x + j]):
-                    return True
-    return False
+// Move the block left
+function moveLeft() {
+    currentBlock.x--;
+    if (isCollision()) {
+        currentBlock.x++;
+    }
+}
 
+// Move the block right
+function moveRight() {
+    currentBlock.x++;
+    if (isCollision()) {
+        currentBlock.x--;
+    }
+}
 
-def merge_block(block, grid):
-    block_type = block['type']
-    rotation = block['rotation']
-    x = block['x']
-    y = block['y']
-    for i, row in enumerate(TETROMINOES[block_type][rotation]):
-        for j, cell in enumerate(row):
-            if cell:
-                grid[y + i][x + j] = block_type
+// Move the block down
+function moveDown() {
+    currentBlock.y++;
+    if (isCollision()) {
+        currentBlock.y--;
+        mergeBlock();
+        currentBlock = createBlock();
+        removeFullRows();
+    }
+}
 
+// Check for collision
+function isCollision() {
+    const { type, rotation, x, y } = currentBlock;
+    for (let i = 0; i < rotation.length; i++) {
+        for (let j = 0; j < rotation[i].length; j++) {
+            if (rotation[i][j]) {
+                const blockX = x + j;
+                const blockY = y + i;
+                if (
+                    blockX < 0 ||
+                    blockX >= GRID_WIDTH ||
+                    blockY >= GRID_HEIGHT ||
+                    (blockY >= 0 && grid[blockY][blockX])
+                ) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
 
-def draw_grid(screen, grid):
-    for i in range(GRID_WIDTH):
-        for j in range(GRID_HEIGHT):
-            if grid[j][i]:
-                pygame.draw.rect(screen, TETROMINO_COLORS[grid[j][i]],
-                                 (i * GRID_SIZE, j * GRID_SIZE, GRID_SIZE, GRID_SIZE))
-                pygame.draw.rect(screen, BLACK,
-                                 (i * GRID_SIZE, j * GRID_SIZE, GRID_SIZE, GRID_SIZE), 1)
-            else:
-                pygame.draw.rect(screen, GRAY,
-                                 (i * GRID_SIZE, j * GRID_SIZE, GRID_SIZE, GRID_SIZE), 1)
+// Merge current block into grid
+function mergeBlock() {
+    const { type, rotation, x, y } = currentBlock;
+    for (let i = 0; i < rotation.length; i++) {
+        for (let j = 0; j < rotation[i].length; j++) {
+            if (rotation[i][j]) {
+                const blockX = x + j;
+                const blockY = y + i;
+                if (blockY >= 0) {
+                    grid[blockY][blockX] = type;
+                }
+            }
+        }
+    }
+}
 
+// Remove full rows from grid
+function removeFullRows() {
+    for (let i = GRID_HEIGHT - 1; i >= 0; i--) {
+        if (grid[i].every(cell => cell !== 0)) {
+            grid.splice(i, 1);
+            grid.unshift(Array(GRID_WIDTH).fill(0));
+            score++;
+        }
+    }
+}
 
-def remove_full_rows(grid):
-    full_rows = []
-    for i in range(len(grid)):
-        if all(grid[i]):
-            full_rows.append(i)
-
-    for row in full_rows:
-        del grid[row]
-        grid.insert(0, [0] * GRID_WIDTH)
-
-
-def game_over_screen(screen):
-    font = pygame.font.Font(None, 36)
-    text = font.render("Game Over!", True, WHITE)
-    text_rect = text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
-    screen.blit(text, text_rect)
-    pygame.display.flip()
-    pygame.time.wait(2000)
-
-
-if __name__ == "__main__":
-    main()
+// Display game over screen
+function gameOverScreen() {
+    ctx.fillStyle = WHITE;
+    ctx.font = '36px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('Game Over', SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2);
+    ctx.fillText(`Score: ${score}`, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 40);
+}
